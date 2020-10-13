@@ -59,7 +59,7 @@ public:
     }
 
     virtual void onClick(int16_t x, int16_t y) override {
-
+        (void)y;
         for(uint8_t i = 0; i<N; i++) {
             if(x < left + Digit::WIDTH * (i+1)) {
                 setActiveDigit(i);

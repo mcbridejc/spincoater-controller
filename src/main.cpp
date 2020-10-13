@@ -4,10 +4,11 @@
 #include <modm/math.hpp>
 #include <modm/io.hpp>
 #include <modm/processing.hpp>
+#include <modm/platform.hpp>
 #include <modm/driver/display/ili9341_spi.hpp>
 #include <modm/driver/touch/ads7843.hpp>
 
-#include "CursorWidget.hpp"
+#include "MovingAverage.hpp"
 #include "ui/UiManager.hpp"
 #include "ui/Numeric.hpp"
 #include "ui/ImageButton.hpp"
@@ -24,7 +25,7 @@ namespace display {
     using Sck = GpioA5;
     using Miso = GpioA6;
     using Mosi = GpioA7;
-    using Dc = GpioB0;
+    using Dc = GpioB11;
     using Reset = GpioB1;
     using Backlight = GpioB10;
 }
@@ -33,6 +34,18 @@ namespace touchpins {
     using Spi = SpiMaster1;
     using Cs = GpioA2;
     using Int = GpioA1;
+}
+
+namespace pwm {
+    using Pin = GpioB0;
+    using Timer = Timer3;
+    const uint32_t Chan = 3;
+}
+
+namespace rpm {
+    using Pin = GpioA0;
+    using Timer = Timer2;
+    const uint32_t Chan = 1;
 }
 
 modm::Ili9341Spi<
@@ -60,6 +73,8 @@ ui::ImageButton playButton(220, 150, modm::accessor::asFlash(images::play));
 ui::ImageButton stopButton(220, 150, modm::accessor::asFlash(images::stop));
 
 uint16_t rpmSetting = 0;
+MovingAverage<20> rpmFilter;
+bool rpmValid = false;
 
 void BuildUi() {
     uiManager.addWidget(&settingNumeric);
@@ -70,7 +85,7 @@ void BuildUi() {
     uiManager.addWidget(&stopButton);
 
     stopButton.hide();
-    
+
     upButton.registerClick([]() {
         uint16_t increment = std::pow(10, 3 - settingNumeric.getActiveDigit());
         rpmSetting += increment;
@@ -105,6 +120,92 @@ namespace touchCalibration {
     const uint16_t MaxY = 3800;
 };
 
+void setupPwm() {
+    pwm::Pin::setOutput(true);
+    pwm::Timer::enable();
+    pwm::Timer::connect<pwm::Pin::Ch3>();
+    pwm::Timer::setMode(
+        pwm::Timer::Mode::UpCounter,
+        pwm::Timer::SlaveMode::Disabled
+    );
+    pwm::Timer::setPeriod<Board::SystemClock>(50 * 1000); // microseconds
+    pwm::Timer::configureOutputChannel(
+        pwm::Chan,
+        pwm::Timer::OutputCompareMode::Pwm,
+        0
+    );
+    pwm::Timer::start();
+    pwm::Timer::setNormalPwm(pwm::Chan);
+}
+
+void setPulseWidth(uint32_t width_us) {
+    float cycles = (float)pwm::Timer::getTickFrequency<Board::SystemClock>() * (float)width_us / 1e6f;
+    usb_stream0 << "Setting pulse width: " << cycles << "\r\n";
+
+    pwm::Timer::setCompareValue(pwm::Chan, (uint16_t)(cycles + 0.5));
+}
+
+void setupRpm() {
+    rpm::Timer::enable();
+    rpm::Timer::setMode(
+        rpm::Timer::Mode::UpCounter,
+        rpm::Timer::SlaveMode::Disabled
+    );
+    rpm::Timer::configureInputChannel(
+        rpm::Chan,
+        rpm::Timer::InputCaptureMapping::InputOwn,
+        rpm::Timer::InputCapturePrescaler::Div1,
+        rpm::Timer::InputCapturePolarity::Rising,
+        8
+    );
+    rpm::Timer::enableInterruptVector(true, 3);
+    rpm::Timer::enableInterrupt(rpm::Timer::Interrupt::CaptureCompare1);
+    rpm::Timer::enableInterrupt(rpm::Timer::Interrupt::Update);
+    rpm::Timer::start();
+}
+
+uint32_t getRpm() {
+    if(rpmValid) {
+        uint32_t freq = rpm::Timer::getTickFrequency<Board::SystemClock>();
+        uint32_t period = rpmFilter.get();
+        usb_stream0 << "period: " << period << "\r\n";
+        if(period > 0) {
+            // 7 electrical rev / mechanical rev
+            return (uint32_t)((float)60.0 * freq / period / 7);
+        } else {
+            return 0;
+        }
+    } else {
+        return 0;
+    }
+}
+
+MODM_ISR(TIM2)
+{
+    static uint32_t highCount; // Count overflows
+    static uint32_t lastCapture;
+    auto flags = rpm::Timer::getInterruptFlags();
+    rpm::Timer::acknowledgeInterruptFlags(flags);
+
+    Board::LedGreen::set();
+
+    uint32_t newCount = rpm::Timer::getCompareValue(rpm::Chan) + highCount * 65536;
+
+    if(flags.value & (uint32_t)rpm::Timer::InterruptFlag::Update) {
+        highCount += 1;
+        if(newCount - lastCapture > 500000000) {
+            rpmValid = false;
+        }
+    }
+
+    if(flags.value & (uint32_t)rpm::Timer::InterruptFlag::CaptureCompare1) {
+        rpmFilter.push(newCount - lastCapture);
+        lastCapture = newCount;
+        rpmValid = true;
+    }
+
+    Board::LedGreen::reset();
+}
 
 int main() {
     Board::initialize();
@@ -114,9 +215,14 @@ int main() {
     Board::usb::Dp::setInput();
     Board::initializeUsbFs();
 
+    setupPwm();
+    setupRpm();
+
+    setPulseWidth(1500);
+
     display::Spi::connect<display::Sck::Sck, display::Miso::Miso, display::Mosi::Mosi>();
 	display::Spi::initialize<Board::SystemClock, 2248_kHz, 20_pct>();
-	tft.initialize();    
+	tft.initialize();
     tft.enableBacklight(true);
     tft.setRotation(modm::ili9341::Rotation::Rotate270);
 
@@ -124,7 +230,7 @@ int main() {
     touch.initialize();
 
 	Board::LedGreen::set();
-    
+
 	tft.setColor(modm::glcd::Color::red());
     tft.setBackgroundColor(modm::glcd::Color::white());
     tft.clear();
@@ -145,7 +251,7 @@ int main() {
 
         // TODO: There's something screwy with the display driver width/height
         // that I've been ignoring for now.
-        // I had to swap its width and height to properly clear, but then the 
+        // I had to swap its width and height to properly clear, but then the
         // reported width/height (as used here) are swapped...
         int16_t px = (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
         int16_t py = (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
@@ -153,15 +259,12 @@ int main() {
 
         if(timer.execute()) {
             Board::LedGreen::toggle();
+            setPulseWidth(1500);
 
-            if(touch_active) {
-                cursor.setPos(px, py); 
-                usb_stream0 << "Touch: " << p.x << ", " << p.y << "\r\n";
-            } else {
-                cursor.clear();
-                usb_stream0 << "No touch\r\n";
-            }
+            usb_stream0 << "RPM: " << getRpm() << "\r\n";
+
+            actualNumeric.setValue(getRpm());
         }
     }
-    
-}   
+
+}

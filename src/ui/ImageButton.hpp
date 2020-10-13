@@ -20,6 +20,8 @@ public:
     }
 
     virtual void onClick(int16_t x, int16_t y) override {
+        (void)x;
+        (void)y;
         if(clickCallback) {
             clickCallback();
         }

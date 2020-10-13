@@ -30,7 +30,10 @@ public:
 
     virtual void redraw() = 0;
 
-    virtual void onClick(int16_t x, int16_t y) {}
+    virtual void onClick(int16_t x, int16_t y) {
+        (void)x;
+        (void)y;
+    }
 
     int16_t left;
     int16_t top;

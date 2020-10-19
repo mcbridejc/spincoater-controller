@@ -9,7 +9,7 @@ class UiManager;
 
 class Widget {
 public:
-    Widget() : 
+Widget() : 
         left(0),
         top(0),
         width(0),

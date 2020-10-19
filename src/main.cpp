@@ -8,6 +8,9 @@
 #include <modm/driver/display/ili9341_spi.hpp>
 #include <modm/driver/touch/ads7843.hpp>
 
+#include "AnalogFrequencyCounter.hpp"
+#include "DigitalFrequencyCounter.hpp"
+#include "MotorControl.hpp"
 #include "MovingAverage.hpp"
 #include "ui/UiManager.hpp"
 #include "ui/Numeric.hpp"
@@ -61,20 +64,19 @@ modm::Ads7843<touchpins::Spi, touchpins::Cs, touchpins::Int> touch;
 modm::IODeviceWrapper<UsbUart0, modm::IOBuffer::DiscardIfFull> usb_io_device0;
 modm::IOStream usb_stream0(usb_io_device0);
 
-modm::PeriodicTimer timer{1s};
+modm::PeriodicTimer timer{0.02s};
 
 ui::UiManager uiManager(&tft);
-
-ui::Numeric<4> settingNumeric(20, 30, modm::glcd::Color::navy(), modm::glcd::Color::maroon());
-ui::Numeric<4> actualNumeric(20, 150, modm::glcd::Color::black(), modm::glcd::Color::maroon());
+ui::NumericActiveDigit<4> settingNumeric(20, 30, modm::glcd::Color::navy(), modm::glcd::Color::maroon());
+ui::Numeric<4> actualNumeric(20, 150, modm::glcd::Color::black());
 ui::ImageButton upButton(210, 10, modm::accessor::asFlash(images::up_arrow));
 ui::ImageButton downButton(210, 68, modm::accessor::asFlash(images::down_arrow));
 ui::ImageButton playButton(220, 150, modm::accessor::asFlash(images::play));
 ui::ImageButton stopButton(220, 150, modm::accessor::asFlash(images::stop));
 
-uint16_t rpmSetting = 0;
-MovingAverage<20> rpmFilter;
-bool rpmValid = false;
+uint16_t rpmSetting = 1000;
+MotorControl motorControl;
+bool motorEnable = false;
 
 void BuildUi() {
     uiManager.addWidget(&settingNumeric);
@@ -89,7 +91,6 @@ void BuildUi() {
     upButton.registerClick([]() {
         uint16_t increment = std::pow(10, 3 - settingNumeric.getActiveDigit());
         rpmSetting += increment;
-        usb_stream0 << "Up " << increment << "\r\n";
         settingNumeric.setValue(rpmSetting);
     });
 
@@ -100,16 +101,15 @@ void BuildUi() {
     });
 
     playButton.registerClick([]() {
-
-        usb_stream0 << "Play " << "\r\n";
         playButton.hide();
         stopButton.show();
+        motorEnable = true;
     });
 
     stopButton.registerClick([]() {
-        usb_stream0 << "Stop " << "\r\n";
         stopButton.hide();
         playButton.show();
+        motorEnable = false;
     });
 }
 
@@ -120,6 +120,8 @@ namespace touchCalibration {
     const uint16_t MaxY = 3800;
 };
 
+using freqCounter = AnalogFrequencyCounter<Timer2, Board::SystemClock>;
+
 void setupPwm() {
     pwm::Pin::setOutput(true);
     pwm::Timer::enable();
@@ -128,7 +130,7 @@ void setupPwm() {
         pwm::Timer::Mode::UpCounter,
         pwm::Timer::SlaveMode::Disabled
     );
-    pwm::Timer::setPeriod<Board::SystemClock>(50 * 1000); // microseconds
+    pwm::Timer::setPeriod<Board::SystemClock>(20 * 1000); // microseconds
     pwm::Timer::configureOutputChannel(
         pwm::Chan,
         pwm::Timer::OutputCompareMode::Pwm,
@@ -140,71 +142,13 @@ void setupPwm() {
 
 void setPulseWidth(uint32_t width_us) {
     float cycles = (float)pwm::Timer::getTickFrequency<Board::SystemClock>() * (float)width_us / 1e6f;
-    usb_stream0 << "Setting pulse width: " << cycles << "\r\n";
 
     pwm::Timer::setCompareValue(pwm::Chan, (uint16_t)(cycles + 0.5));
 }
 
-void setupRpm() {
-    rpm::Timer::enable();
-    rpm::Timer::setMode(
-        rpm::Timer::Mode::UpCounter,
-        rpm::Timer::SlaveMode::Disabled
-    );
-    rpm::Timer::configureInputChannel(
-        rpm::Chan,
-        rpm::Timer::InputCaptureMapping::InputOwn,
-        rpm::Timer::InputCapturePrescaler::Div1,
-        rpm::Timer::InputCapturePolarity::Rising,
-        8
-    );
-    rpm::Timer::enableInterruptVector(true, 3);
-    rpm::Timer::enableInterrupt(rpm::Timer::Interrupt::CaptureCompare1);
-    rpm::Timer::enableInterrupt(rpm::Timer::Interrupt::Update);
-    rpm::Timer::start();
-}
-
-uint32_t getRpm() {
-    if(rpmValid) {
-        uint32_t freq = rpm::Timer::getTickFrequency<Board::SystemClock>();
-        uint32_t period = rpmFilter.get();
-        usb_stream0 << "period: " << period << "\r\n";
-        if(period > 0) {
-            // 7 electrical rev / mechanical rev
-            return (uint32_t)((float)60.0 * freq / period / 7);
-        } else {
-            return 0;
-        }
-    } else {
-        return 0;
-    }
-}
-
 MODM_ISR(TIM2)
 {
-    static uint32_t highCount; // Count overflows
-    static uint32_t lastCapture;
-    auto flags = rpm::Timer::getInterruptFlags();
-    rpm::Timer::acknowledgeInterruptFlags(flags);
-
-    Board::LedGreen::set();
-
-    uint32_t newCount = rpm::Timer::getCompareValue(rpm::Chan) + highCount * 65536;
-
-    if(flags.value & (uint32_t)rpm::Timer::InterruptFlag::Update) {
-        highCount += 1;
-        if(newCount - lastCapture > 500000000) {
-            rpmValid = false;
-        }
-    }
-
-    if(flags.value & (uint32_t)rpm::Timer::InterruptFlag::CaptureCompare1) {
-        rpmFilter.push(newCount - lastCapture);
-        lastCapture = newCount;
-        rpmValid = true;
-    }
-
-    Board::LedGreen::reset();
+    freqCounter::isrHandler();
 }
 
 int main() {
@@ -216,9 +160,8 @@ int main() {
     Board::initializeUsbFs();
 
     setupPwm();
-    setupRpm();
-
-    setPulseWidth(1500);
+    setPulseWidth(800);
+    freqCounter::initialize();
 
     display::Spi::connect<display::Sck::Sck, display::Miso::Miso, display::Mosi::Mosi>();
 	display::Spi::initialize<Board::SystemClock, 2248_kHz, 20_pct>();
@@ -239,12 +182,15 @@ int main() {
 
     BuildUi();
     uiManager.redraw();
+    settingNumeric.setValue(rpmSetting);
     settingNumeric.setActiveDigit(1);
 
     tusb_init();
 
     while(true) {
         tud_task();
+
+        freqCounter::task();
 
         modm::glcd::Point p;
         bool touch_active = touch.testRead(&p);
@@ -258,12 +204,15 @@ int main() {
         uiManager.handleTouchStatus(touch_active, px, py);
 
         if(timer.execute()) {
-            Board::LedGreen::toggle();
-            setPulseWidth(1500);
-
-            usb_stream0 << "RPM: " << getRpm() << "\r\n";
-
-            actualNumeric.setValue(getRpm());
+            uint32_t rpm = (uint32_t)(60 * freqCounter::getFrequency());
+            if(motorEnable) {
+                motorControl.set_speed(rpmSetting);
+            } else {
+                motorControl.set_speed(0);
+            }
+            float pwm = motorControl.update((float)rpm);
+            setPulseWidth((uint32_t)pwm);
+            actualNumeric.setValue(rpm);
         }
     }
 

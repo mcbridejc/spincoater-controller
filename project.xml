@@ -22,11 +22,13 @@
     <module>modm:docs</module>
     <module>modm:driver:ili9341</module>
     <module>modm:driver:ads7843</module>
+    <module>modm:platform:adc:1</module>
     <module>modm:platform:clock</module>
     <module>modm:platform:core</module>
     <module>modm:platform:heap</module>
     <module>modm:platform:spi:1</module>
     <module>modm:platform:gpio</module>
+    <module>modm:platform:timer:1</module>
     <module>modm:platform:timer:2</module>
     <module>modm:platform:timer:3</module>
     <module>modm:processing:timer</module>

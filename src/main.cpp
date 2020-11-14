@@ -155,7 +155,7 @@ int main() {
 	display::Spi::initialize<Board::SystemClock, 2248_kHz, 20_pct>();
 	tft.initialize();
     tft.enableBacklight(true);
-    tft.setRotation(modm::ili9341::Rotation::Rotate270);
+    tft.setRotation(modm::ili9341::Rotation::Rotate90);
 
     touchpins::Cs::setOutput(true);
     touch.initialize();
@@ -180,12 +180,8 @@ int main() {
             modm::glcd::Point p;
             bool touch_active = touch.testRead(&p);
             
-            // TODO: There's something screwy with the display driver width/height
-            // that I've been ignoring for now.
-            // I had to swap its width and height to properly clear, but then the
-            // reported width/height (as used here) are swapped...
-            int16_t px = (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
-            int16_t py = (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
+            int16_t px = h - (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
+            int16_t py = w - (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
             uiManager.handleTouchStatus(touch_active, px, py);
         }
 

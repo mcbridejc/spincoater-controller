@@ -39,7 +39,7 @@ build:
 
 port?=auto
 ELF_FILE=$(BUILD_DIR)/cmake-build-$(profile)/spincoater.elf
-MEMORIES = "[{'name': 'flash', 'access': 'rx', 'start': 134217728, 'size': 65536}, {'name': 'sram1', 'access': 'rwx', 'start': 536870912, 'size': 20480}]"
+MEMORIES = "[{'name': 'flash', 'access': 'rx', 'start': 134217728, 'size': 131072}, {'name': 'ccm', 'access': 'rwx', 'start': 268435456, 'size': 10240}, {'name': 'sram1', 'access': 'rwx', 'start': 536870912, 'size': 26624}, {'name': 'sram2', 'access': 'rwx', 'start': 536897536, 'size': 6144}]"
 size: build
 	@python3 modm/modm_tools/size.py $(ELF_FILE) $(MEMORIES)
 

@@ -3,6 +3,8 @@
 Simple spincoater controller, written in C++ for the STM32 and 
 [Tapper](https://github.com/mcbridejc/tapper) board.
 
+![Tapper Enclosure](doc/device.jpg)
+
 ## What it does
 
 It provides a touchscreen UI for speed control with a quadcopter motor and ESC. I 

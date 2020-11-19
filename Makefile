@@ -7,7 +7,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-BUILD_DIR = build/touchdemo-c++
+BUILD_DIR = build/spincoater
 
 CMAKE_GENERATOR = Unix Makefiles
 CMAKE_FLAGS = -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON -DCMAKE_RULE_MESSAGES:BOOL=ON -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
@@ -22,8 +22,8 @@ all: cmake build
 cmake:
 	@cmake -E make_directory $(BUILD_DIR)/cmake-build-debug
 	@cmake -E make_directory $(BUILD_DIR)/cmake-build-release
-	@cd $(BUILD_DIR)/cmake-build-debug && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -G "$(CMAKE_GENERATOR)" /home/jeff/dev/touchdemo-c++
-	@cd $(BUILD_DIR)/cmake-build-release && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -G "$(CMAKE_GENERATOR)" /home/jeff/dev/touchdemo-c++
+	@cd $(BUILD_DIR)/cmake-build-debug && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -G "$(CMAKE_GENERATOR)" ../../..
+	@cd $(BUILD_DIR)/cmake-build-release && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -G "$(CMAKE_GENERATOR)" ../../..
 
 clean:
 	@cmake --build $(BUILD_DIR)/cmake-build-release --target clean

@@ -180,8 +180,8 @@ int main() {
             modm::glcd::Point p;
             bool touch_active = touch.read(&p);
             
-            int16_t px = h - (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
-            int16_t py = w - (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
+            int16_t px = w - (p.x - touchCalibration::MinX) * w / (touchCalibration::MaxX - touchCalibration::MinX);
+            int16_t py = h - (p.y - touchCalibration::MinY) * h / (touchCalibration::MaxY - touchCalibration::MinY);
             uiManager.handleTouchStatus(touch_active, px, py);
         }
 

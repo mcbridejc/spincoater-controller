@@ -15,12 +15,10 @@
     <module>modm:architecture:atomic</module>
     <module>modm:architecture:delay</module>
     <module>modm:build:cmake</module>
-    <module>modm:build:scons</module>
     <module>modm:cmsis:core</module>
     <module>modm:cmsis:device</module>
     <module>modm:docs</module>
     <module>modm:driver:ili9341</module>
-    <module>modm:driver:ads7843</module>
     <module>modm:platform:adc:1</module>
     <module>modm:platform:clock</module>
     <module>modm:platform:core</module>

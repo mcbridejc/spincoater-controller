@@ -5,12 +5,12 @@
 #include <modm/processing.hpp>
 #include <modm/platform.hpp>
 #include <modm/driver/display/ili9341_spi.hpp>
-#include <modm/driver/touch/ads7843.hpp>
 
 #include "AnalogFrequencyCounter.hpp"
 #include "DigitalFrequencyCounter.hpp"
 #include "MotorControl.hpp"
 #include "MovingAverage.hpp"
+#include "xpt2046.hpp"
 #include "ui/UiManager.hpp"
 #include "ui/Numeric.hpp"
 #include "ui/ImageButton.hpp"
@@ -53,7 +53,7 @@ modm::Ili9341Spi<
 	display::Backlight
 > tft;
 
-modm::Ads7843<touchpins::Spi, touchpins::Cs, touchpins::Int> touch;
+Xpt2046<touchpins::Spi, touchpins::Cs, touchpins::Int> touch;
 
 modm::PeriodicTimer motorTimer{0.02s};
 modm::PeriodicTimer touchTimer{0.005s};
@@ -178,7 +178,7 @@ int main() {
 
         if(touchTimer.execute()) {
             modm::glcd::Point p;
-            bool touch_active = touch.testRead(&p);
+            bool touch_active = touch.read(&p);
             
             int16_t px = h - (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
             int16_t py = w - (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
@@ -197,5 +197,4 @@ int main() {
             actualNumeric.setValue(rpm);
         }
     }
-
 }

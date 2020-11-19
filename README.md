@@ -32,7 +32,7 @@ to add some resistors and connect GPIOs.
 
 ![Board Mod Schematic](doc/tapper_modification_schematic.png)
 
-![Board Modifications](doc/tapper_modifications.png)
+![Board Modifications](doc/tapper_modifications.jpg)
 
 ## Embedded image updates
 

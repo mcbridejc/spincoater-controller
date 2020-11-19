@@ -50,7 +50,7 @@ public:
         }
         touchActive = active;
         if(active) {
-            debounceCounter = 10;
+            debounceCounter = 25;
         }
         if(!active && debounceCounter > 0) {
             debounceCounter--;

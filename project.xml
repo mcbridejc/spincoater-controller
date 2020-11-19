@@ -4,24 +4,21 @@
       <path>ext/modm/repo.lb</path>
     </repository>
   </repositories>
-  <extends>modm:blue-pill</extends>
+  <extends>modm:nucleo-g431kb</extends>
   <options>
     <option name="modm:build:project.name">spincoater</option>
     <option name="modm:build:cmake:include_cmakelists">false</option>
     <option name="modm:build:cmake:include_makefile">false</option>
     <option name="modm:build:openocd.cfg">openocd.cfg</option>
-    <option name="modm:tinyusb:config">device.cdc</option>
   </options>
   <modules>
     <module>modm:architecture:atomic</module>
     <module>modm:architecture:delay</module>
     <module>modm:build:cmake</module>
-    <module>modm:build:scons</module>
     <module>modm:cmsis:core</module>
     <module>modm:cmsis:device</module>
     <module>modm:docs</module>
     <module>modm:driver:ili9341</module>
-    <module>modm:driver:ads7843</module>
     <module>modm:platform:adc:1</module>
     <module>modm:platform:clock</module>
     <module>modm:platform:core</module>
@@ -32,6 +29,5 @@
     <module>modm:platform:timer:2</module>
     <module>modm:platform:timer:3</module>
     <module>modm:processing:timer</module>
-    <module>modm:tinyusb</module>
   </modules>
 </library>

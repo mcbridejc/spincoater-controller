@@ -1,4 +1,3 @@
-#include <tusb.h>
 
 #include "modm/board.hpp"
 #include <modm/math.hpp>
@@ -6,12 +5,12 @@
 #include <modm/processing.hpp>
 #include <modm/platform.hpp>
 #include <modm/driver/display/ili9341_spi.hpp>
-#include <modm/driver/touch/ads7843.hpp>
 
 #include "AnalogFrequencyCounter.hpp"
 #include "DigitalFrequencyCounter.hpp"
 #include "MotorControl.hpp"
 #include "MovingAverage.hpp"
+#include "xpt2046.hpp"
 #include "ui/UiManager.hpp"
 #include "ui/Numeric.hpp"
 #include "ui/ImageButton.hpp"
@@ -24,31 +23,26 @@ using namespace modm::platform;
 
 namespace display {
     using Spi = SpiMaster1;
-    using Cs = GpioA4;
+    using Cs = GpioB0;
     using Sck = GpioA5;
     using Miso = GpioA6;
     using Mosi = GpioA7;
-    using Dc = GpioB11;
-    using Reset = GpioB1;
-    using Backlight = GpioB10;
+    using Dc = GpioF1;
+    using Reset = GpioUnused;
+    using Backlight = GpioUnused;
 }
 
 namespace touchpins {
     using Spi = SpiMaster1;
-    using Cs = GpioA2;
-    using Int = GpioA1;
+    using Cs = GpioA8;
+    using Int = GpioUnused;
 }
 
 namespace pwm {
-    using Pin = GpioB0;
+    using Pin = GpioA4;
     using Timer = Timer3;
-    const uint32_t Chan = 3;
-}
-
-namespace rpm {
-    using Pin = GpioA0;
-    using Timer = Timer2;
-    const uint32_t Chan = 1;
+    const uint32_t Chan = 2;
+    typedef GpioA4::Ch2<modm::platform::Peripheral::Tim3> ConnectType;
 }
 
 modm::Ili9341Spi<
@@ -59,20 +53,18 @@ modm::Ili9341Spi<
 	display::Backlight
 > tft;
 
-modm::Ads7843<touchpins::Spi, touchpins::Cs, touchpins::Int> touch;
+Xpt2046<touchpins::Spi, touchpins::Cs, touchpins::Int> touch;
 
-modm::IODeviceWrapper<UsbUart0, modm::IOBuffer::DiscardIfFull> usb_io_device0;
-modm::IOStream usb_stream0(usb_io_device0);
-
-modm::PeriodicTimer timer{0.02s};
+modm::PeriodicTimer motorTimer{0.02s};
+modm::PeriodicTimer touchTimer{0.005s};
 
 ui::UiManager uiManager(&tft);
 ui::NumericActiveDigit<4> settingNumeric(20, 30, modm::glcd::Color::navy(), modm::glcd::Color::maroon());
 ui::Numeric<4> actualNumeric(20, 150, modm::glcd::Color::black());
-ui::ImageButton upButton(210, 10, modm::accessor::asFlash(images::up_arrow));
-ui::ImageButton downButton(210, 68, modm::accessor::asFlash(images::down_arrow));
-ui::ImageButton playButton(220, 150, modm::accessor::asFlash(images::play));
-ui::ImageButton stopButton(220, 150, modm::accessor::asFlash(images::stop));
+ui::ImageButton upButton(210, 0, modm::accessor::asFlash(images::up_arrow), 10);
+ui::ImageButton downButton(210, 60, modm::accessor::asFlash(images::down_arrow), 10);
+ui::ImageButton playButton(210, 140, modm::accessor::asFlash(images::play), 10);
+ui::ImageButton stopButton(210, 140, modm::accessor::asFlash(images::stop), 10);
 
 uint16_t rpmSetting = 1000;
 MotorControl motorControl;
@@ -125,7 +117,8 @@ using freqCounter = AnalogFrequencyCounter<Timer2, Board::SystemClock>;
 void setupPwm() {
     pwm::Pin::setOutput(true);
     pwm::Timer::enable();
-    pwm::Timer::connect<pwm::Pin::Ch3>();
+    pwm::ConnectType::connect();
+
     pwm::Timer::setMode(
         pwm::Timer::Mode::UpCounter,
         pwm::Timer::SlaveMode::Disabled
@@ -154,11 +147,6 @@ MODM_ISR(TIM2)
 int main() {
     Board::initialize();
 
-    Board::usb::Dp::setOutput(false);
-    modm::delay_ms(1);
-    Board::usb::Dp::setInput();
-    Board::initializeUsbFs();
-
     setupPwm();
     setPulseWidth(800);
     freqCounter::initialize();
@@ -167,12 +155,12 @@ int main() {
 	display::Spi::initialize<Board::SystemClock, 2248_kHz, 20_pct>();
 	tft.initialize();
     tft.enableBacklight(true);
-    tft.setRotation(modm::ili9341::Rotation::Rotate270);
+    tft.setRotation(modm::ili9341::Rotation::Rotate90);
 
     touchpins::Cs::setOutput(true);
     touch.initialize();
 
-	Board::LedGreen::set();
+	Board::LedUser::set();
 
 	tft.setColor(modm::glcd::Color::red());
     tft.setBackgroundColor(modm::glcd::Color::white());
@@ -185,25 +173,19 @@ int main() {
     settingNumeric.setValue(rpmSetting);
     settingNumeric.setActiveDigit(1);
 
-    tusb_init();
-
     while(true) {
-        tud_task();
-
         freqCounter::task();
 
-        modm::glcd::Point p;
-        bool touch_active = touch.testRead(&p);
+        if(touchTimer.execute()) {
+            modm::glcd::Point p;
+            bool touch_active = touch.read(&p);
+            
+            int16_t px = w - (p.x - touchCalibration::MinX) * w / (touchCalibration::MaxX - touchCalibration::MinX);
+            int16_t py = h - (p.y - touchCalibration::MinY) * h / (touchCalibration::MaxY - touchCalibration::MinY);
+            uiManager.handleTouchStatus(touch_active, px, py);
+        }
 
-        // TODO: There's something screwy with the display driver width/height
-        // that I've been ignoring for now.
-        // I had to swap its width and height to properly clear, but then the
-        // reported width/height (as used here) are swapped...
-        int16_t px = (p.x - touchCalibration::MinX) * h / (touchCalibration::MaxX - touchCalibration::MinX);
-        int16_t py = (p.y - touchCalibration::MinY) * w / (touchCalibration::MaxY - touchCalibration::MinY);
-        uiManager.handleTouchStatus(touch_active, px, py);
-
-        if(timer.execute()) {
+        if(motorTimer.execute()) {
             uint32_t rpm = (uint32_t)(60 * freqCounter::getFrequency());
             if(motorEnable) {
                 motorControl.set_speed(rpmSetting);
@@ -215,5 +197,4 @@ int main() {
             actualNumeric.setValue(rpm);
         }
     }
-
 }

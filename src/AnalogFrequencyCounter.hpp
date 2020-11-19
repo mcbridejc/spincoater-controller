@@ -32,14 +32,13 @@ static uint32_t periods[NumPeriods] = {0};
 static uint32_t periodInPtr = 0;
 static float periodInSeconds = 0.0f;
 
-void AdcIrqHandler() {
-    Adc::acknowledgeInterruptFlags(Adc::getInterruptFlags());
+MODM_ISR(ADC1_2) {
+    Adc::acknowledgeInterruptFlag(Adc::getInterruptFlags());
 
     uint16_t sample = Adc::getValue();
     // Convert 12-bit sample to 8 bit
     sampleBuffer[sampleHead] = (sample);
     sampleHead = (sampleHead + 1) % SampleBufferSize;\
-    Board::LedGreen::toggle();
 }
 
 template<class Timer, class SystemClock>
@@ -58,11 +57,9 @@ public:
         Timer::enableInterrupt(Timer::Interrupt::Update);
         Timer::start();
 
-        Adc::initialize<SystemClock, 9_MHz>();
-        Adc::connect<GpioA0::In0>();
-        Adc::setSampleTime(Adc::Channel::Channel0, Adc::SampleTime::Cycles240);
-        Adc::setChannel(Adc::Channel::Channel0);
-        AdcInterrupt1::attachInterruptHandler(&AdcIrqHandler);
+        Adc::initialize();
+        Adc::connect<GpioA0::In1>();
+        Adc::setChannel(Adc::Channel::Channel1, Adc::SampleTime::Cycles248);
         Adc::enableInterruptVector(4);
         Adc::enableInterrupt(Adc::Interrupt::EndOfRegularConversion);
     }

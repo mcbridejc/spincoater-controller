@@ -18,9 +18,9 @@ static constexpr uint32_t MeanFilterAlpha = (0.001 * MeanScale);
 static const uint32_t SamplePeriodUs = 1000;
 // Hysteresis threshold. Input must reach `runningMean +/- MinSpread` to trigger a 
 // transition
-static const uint8_t MinSpread = 150;
+static const uint8_t MinSpread = 250;
 // If no edges are measured in this time, output goes to zero
-static const uint32_t TimeoutMs = 2000;
+static const uint32_t TimeoutMs = 1000;
 
 static uint16_t sampleBuffer[SampleBufferSize];
 static uint32_t sampleHead;
